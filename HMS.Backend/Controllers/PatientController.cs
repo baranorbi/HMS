@@ -86,9 +86,9 @@ namespace HMS.Backend.Controllers
                 Height = patient.Height,
                 BirthDate = patient.BirthDate,
                 Address = patient.Address,
-                ReviewIds = patient.Reviews.Select(r => r.Id).ToList(),
-                AppointmentIds = patient.Appointments.Select(a => a.Id).ToList(),
-                MedicalRecordIds = patient.MedicalRecords.Select(m => m.Id).ToList()
+                ReviewIds = patient.Reviews?.Select(r => r.Id).ToList() ?? new List<int>(),
+                AppointmentIds = patient.Appointments?.Select(a => a.Id).ToList() ?? new List<int>(),
+                MedicalRecordIds = patient.MedicalRecords?.Select(m => m.Id).ToList() ?? new List<int>()
             };
 
             return Ok(dto);

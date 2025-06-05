@@ -1,14 +1,15 @@
-﻿using HMS.Shared.Entities;
+﻿using HMS.Shared.DTOs.Patient;
+using HMS.Shared.Entities;
 using HMS.Shared.Repositories.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
-using System.Text.Json.Serialization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using HMS.Shared.DTOs.Patient;
+using HMS.Shared.Converters;
 
 namespace HMS.Shared.Proxies.Implementations
 {
@@ -40,7 +41,8 @@ namespace HMS.Shared.Proxies.Implementations
             IEnumerable<PatientDto> patients = JsonSerializer.Deserialize<IEnumerable<PatientDto>>(response_body, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } // without this, the enum values will not match
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
 
             return patients;
@@ -54,16 +56,45 @@ namespace HMS.Shared.Proxies.Implementations
 
             string response_body = await response.Content.ReadAsStringAsync();
 
-            PatientDto patient = JsonSerializer.Deserialize<PatientDto>(response_body, new JsonSerializerOptions
+            try
             {
-                PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } // without this, the enum values will not match
-            });
+                // Log the raw JSON for debugging
+                System.Diagnostics.Debug.WriteLine($"Raw JSON response: {response_body}");
 
-            if (patient == null)
-                throw new Exception($"No patient found with user id {id}");
+                // Configure JSON options to handle reference handling
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    Converters = {
+                        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase),
+                        new CollectionJsonConverter() // Custom converter for handling the nested collections
+                    },
+                    ReferenceHandler = ReferenceHandler.Preserve // Handle references in JSON
+                };
 
-            return patient;
+                PatientDto patient = JsonSerializer.Deserialize<PatientDto>(response_body, options);
+
+                if (patient == null)
+                    throw new Exception($"No patient found with user id {id}");
+
+                // Initialize collections if they're still null
+                patient.ReviewIds ??= new List<int>();
+                patient.AppointmentIds ??= new List<int>();
+                patient.MedicalRecordIds ??= new List<int>();
+
+                // Log successful parsing
+                System.Diagnostics.Debug.WriteLine($"Successfully parsed patient data for: {patient.Name}");
+
+                return patient;
+            }
+            catch (JsonException ex)
+            {
+                // Log the error
+                System.Diagnostics.Debug.WriteLine($"JSON Parsing error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"JSON content: {response_body}");
+
+                throw new Exception($"Failed to parse patient data: {ex.Message}", ex);
+            }
         }
 
         public async Task<Patient> AddAsync(Patient patient)
@@ -90,7 +121,7 @@ namespace HMS.Shared.Proxies.Implementations
                 JsonSerializer.Serialize(patient_send, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true,
-                    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } // without this, the enum values will not match
+                    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
                 }),
                 Encoding.UTF8,
                 "application/json");
@@ -103,8 +134,8 @@ namespace HMS.Shared.Proxies.Implementations
             Patient patient_response = JsonSerializer.Deserialize<Patient>(response_body, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } // without this, the enum values will not match
-
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
 
             return patient_response;
@@ -136,7 +167,7 @@ namespace HMS.Shared.Proxies.Implementations
                     JsonSerializer.Serialize(patient_send, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true,
-                        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } // without this, the enum values will not match
+                        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
                     }),
                     Encoding.UTF8,
                     "application/json");
